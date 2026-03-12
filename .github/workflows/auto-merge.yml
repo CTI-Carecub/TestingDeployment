@@ -31,10 +31,8 @@ jobs:
           echo "### 🚀 Auto Merge Status" >> $GITHUB_STEP_SUMMARY
 
           # 1. Attempt merge
-          MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --merge 2>&1)
-          MERGE_EXIT_CODE=$?
-
-          if [ "$MERGE_EXIT_CODE" -eq 0 ]; then
+          # `if` guards against set -e killing the script when merge fails
+          if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --merge 2>&1); then
             echo "✅ PR #$PR_NUMBER merged successfully." >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Merge Failed!**" >> $GITHUB_STEP_SUMMARY
@@ -64,7 +62,7 @@ jobs:
 
       - name: Upload PR Status JSON
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: pr-status-debug-info
