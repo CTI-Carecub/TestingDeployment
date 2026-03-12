@@ -46,7 +46,7 @@ jobs:
             DECISION=$(jq -r 'if .reviewDecision == "" then "N/A" else .reviewDecision end' pr_status.json)
 
             # statusCheckRollup is a direct array; fields are .name, .conclusion, .status
-            CHECKS=$(jq -r '.statusCheckRollup[]? | "* \(.name) (\(.workflowName)): \(if .conclusion == "" then .status else .conclusion end)"' pr_status.json 2>/dev/null || echo "No checks found")
+            CHECKS=$(jq -r '.statusCheckRollup[]? | "  * \(.name) (\(.workflowName)): \(if .conclusion == "" then .status else .conclusion end)"' pr_status.json 2>/dev/null || echo "No checks found")
 
             echo "* **Review Status:** $DECISION" >> $GITHUB_STEP_SUMMARY
             echo "* **CI Checks:**" >> $GITHUB_STEP_SUMMARY
