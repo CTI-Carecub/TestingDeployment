@@ -50,8 +50,8 @@ jobs:
           elif [[ "$HAS_PATCH" == "true" ]]; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
-            echo "No version label found. Skipping."
-            exit 0
+            echo "No version label found. Defaulting to patch."
+            echo "type=patch" >> $GITHUB_OUTPUT
           fi
 
       - name: Bump Version in package.json
