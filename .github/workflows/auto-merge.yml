@@ -12,7 +12,6 @@ concurrency:
 
 jobs:
   auto-merge:
-    # ✅ Fixed: wrapped conditions in ${{ }} expression syntax
     if: ${{ github.event.label.name == 'ready to merge' && github.event.pull_request.state == 'open' }}
     runs-on: ubuntu-latest
     permissions:
@@ -29,11 +28,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
+          echo "### 🚀 Auto Merge Status2" >> $GITHUB_STEP_SUMMARY
 
-          echo "### 🚀 Auto Merge Status" >> $GITHUB_STEP_SUMMARY
-
-          # ✅ Capture BOTH stdout and stderr
-          MERGE_OUTPUT=$(gh pr merge $PR_NUMBER --merge 2>&1)
+          # Attempt merge and capture output
+          # Added --admin to bypass rules if necessary (requires admin token) or just stick to standard
+          MERGE_OUTPUT=$(gh pr merge $PR_NUMBER --merge --delete-branch=false 2>&1)
           MERGE_EXIT_CODE=$?
 
           if [ $MERGE_EXIT_CODE -eq 0 ]; then
@@ -43,16 +42,18 @@ jobs:
             echo "> **Reason:** $MERGE_OUTPUT" >> $GITHUB_STEP_SUMMARY
 
             echo "#### 🔍 Detailed Checks:" >> $GITHUB_STEP_SUMMARY
+            # Fixed JQ Path: .statusCheckRollup.contexts
             gh pr view $PR_NUMBER --json reviewDecision,statusCheckRollup > pr_status.json
+            
+            DECISION=$(jq -r '.reviewDecision // "N/A"' pr_status.json)
+            # Improved JQ string interpolation for the list
+            CHECKS=$(jq -r '.statusCheckRollup.contexts[] | "* \(.context // .name): \(.conclusion // .state)"' pr_status.json 2>/dev/null || echo "No checks found")
 
-            DECISION=$(jq -r '.reviewDecision' pr_status.json)
-            CHECKS=$(jq -r '.statusCheckRollup[] | "* \(.name): \(.conclusion)"' pr_status.json 2>/dev/null || echo "No checks found")
-
-            echo "* **Review Status:** $DECISION (Needs 'APPROVED')" >> $GITHUB_STEP_SUMMARY
+            echo "* **Review Status:** $DECISION" >> $GITHUB_STEP_SUMMARY
             echo "* **CI Checks:**" >> $GITHUB_STEP_SUMMARY
             echo "$CHECKS" >> $GITHUB_STEP_SUMMARY
 
+            # Remove label to prevent re-triggering until fixed
             gh pr edit $PR_NUMBER --remove-label "ready to merge"
-
             exit 1
           fi
