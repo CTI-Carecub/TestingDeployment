@@ -43,10 +43,10 @@ jobs:
             # Use || true to ensure the script doesn't crash if diagnostic data is missing
             gh pr view "$PR_NUMBER" --json reviewDecision,statusCheckRollup > pr_status.json || echo "{}" > pr_status.json
             
-            DECISION=$(jq -r '.reviewDecision // "N/A"' pr_status.json)
-            
-            # Improved JQ to handle empty or missing rollup contexts gracefully
-            CHECKS=$(jq -r '.statusCheckRollup.contexts[]? | "* \(.context // .name): \(.conclusion // .state)"' pr_status.json 2>/dev/null || echo "No checks found")
+            DECISION=$(jq -r 'if .reviewDecision == "" then "N/A" else .reviewDecision end' pr_status.json)
+
+            # statusCheckRollup is a direct array; fields are .name, .conclusion, .status
+            CHECKS=$(jq -r '.statusCheckRollup[]? | "* \(.name) (\(.workflowName)): \(if .conclusion == "" then .status else .conclusion end)"' pr_status.json 2>/dev/null || echo "No checks found")
 
             echo "* **Review Status:** $DECISION" >> $GITHUB_STEP_SUMMARY
             echo "* **CI Checks:**" >> $GITHUB_STEP_SUMMARY
