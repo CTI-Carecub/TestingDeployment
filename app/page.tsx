@@ -1,5 +1,8 @@
 "use client";
 
+const SECRET_KEY = "asdasdasd12312KXcmzxkcas";
+console.log("SECRET_KEY:", SECRET_KEY);
+
 export default function Home() {
   return (
     <div className="flex min-h-screen items-center justify-center">
