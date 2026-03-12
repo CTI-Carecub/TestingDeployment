@@ -59,13 +59,3 @@ jobs:
             # 3. Exit with error so the Action UI shows a red X
             exit 1
           fi
-
-      - name: Upload PR Status JSON
-        if: always()
-        uses: actions/upload-artifact@v4
-        continue-on-error: true
-        with:
-          name: pr-status-debug-info
-          path: pr_status.json
-          if-no-files-found: ignore
-          retention-days: 5
