@@ -32,20 +32,25 @@ jobs:
 
           echo "### 🚀 Auto Merge Status" >> $GITHUB_STEP_SUMMARY
 
-          if gh pr merge $PR_NUMBER --merge 2>error.log; then
+          # ✅ Capture BOTH stdout and stderr
+          MERGE_OUTPUT=$(gh pr merge $PR_NUMBER --merge 2>&1)
+          MERGE_EXIT_CODE=$?
+
+          if [ $MERGE_EXIT_CODE -eq 0 ]; then
             echo "✅ PR #$PR_NUMBER merged successfully." >> $GITHUB_STEP_SUMMARY
           else
-            ERROR_MSG=$(cat error.log)
             echo "❌ **Merge Failed!**" >> $GITHUB_STEP_SUMMARY
-            echo "> **Reason:** $ERROR_MSG" >> $GITHUB_STEP_SUMMARY
+            echo "> **Reason:** $MERGE_OUTPUT" >> $GITHUB_STEP_SUMMARY
 
             echo "#### 🔍 Detailed Checks:" >> $GITHUB_STEP_SUMMARY
-
-            # ✅ Fixed: use > instead of >> to avoid corrupt JSON if file already exists
             gh pr view $PR_NUMBER --json reviewDecision,statusCheckRollup > pr_status.json
 
             DECISION=$(jq -r '.reviewDecision' pr_status.json)
+            CHECKS=$(jq -r '.statusCheckRollup[] | "* \(.name): \(.conclusion)"' pr_status.json 2>/dev/null || echo "No checks found")
+
             echo "* **Review Status:** $DECISION (Needs 'APPROVED')" >> $GITHUB_STEP_SUMMARY
+            echo "* **CI Checks:**" >> $GITHUB_STEP_SUMMARY
+            echo "$CHECKS" >> $GITHUB_STEP_SUMMARY
 
             gh pr edit $PR_NUMBER --remove-label "ready to merge"
 
