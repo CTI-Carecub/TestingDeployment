@@ -7,17 +7,17 @@ on:
       - main
 
 concurrency:
-  group: develop-branch-sync
+  group: version-bump
   cancel-in-progress: false
 
 jobs:
   bump:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
-      packages: write
-      actions: read
+
     steps:
       - name: Create GitHub App Token
         uses: actions/create-github-app-token@v2
@@ -25,72 +25,86 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_SECRET }}
-      - name: Checkout Code
+
+      - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
-      - name: Determine Bump Type
-        id: bump_type
-        env:
-          HAS_MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'MAJOR') }}
-          HAS_MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'MINOR') }}
-          HAS_PATCH: ${{ contains(github.event.pull_request.labels.*.name, 'PATCH') }}
+      - name: Determine bump type
+        id: bump
         run: |
-          if [[ "$HAS_MAJOR" == "true" ]]; then
+          LABELS="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+
+          if [[ "$LABELS" == *"MAJOR"* ]]; then
             echo "type=major" >> $GITHUB_OUTPUT
-          elif [[ "$HAS_MINOR" == "true" ]]; then
+          elif [[ "$LABELS" == *"MINOR"* ]]; then
             echo "type=minor" >> $GITHUB_OUTPUT
-          elif [[ "$HAS_PATCH" == "true" ]]; then
-            echo "type=patch" >> $GITHUB_OUTPUT
           else
-            echo "No version label found. Defaulting to patch."
             echo "type=patch" >> $GITHUB_OUTPUT
           fi
 
-      - name: Bump Version in package.json
-        if: steps.bump_type.outputs.type != ''
-        env:
-          BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
+      - name: Get latest version
+        id: version
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags
 
-          # ใช้ npm version เพื่ออัปเดตไฟล์และสร้าง commit/tag อัตโนมัติ
-          NEW_VERSION=$(npm version "$BUMP_TYPE" -m "chore: bump version to %s [skip ci]")
-          echo "new_tag=$NEW_VERSION" >> $GITHUB_OUTPUT
+          LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
 
-          # check if remote tag exists
-          if git ls-remote --tags origin | grep -q "refs/tags/$NEW_VERSION"; then
-            echo "Remote tag exists. Removing..."
-            git tag -d "$NEW_VERSION" || true
-
-            git push origin ":refs/tags/$NEW_VERSION"
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
           fi
 
-          # Push ทั้ง commit และ tag กลับไปที่ main
-          git push origin main
-          git push origin "$NEW_VERSION"
-        id: npm_bump
+          echo "latest=$LATEST_TAG"
+          echo "latest=$LATEST_TAG" >> $GITHUB_OUTPUT
 
-      - name: Back-merge main into develop
-        if: steps.bump_type.outputs.type != ''
+      - name: Calculate next version
+        id: next
         env:
-          NEW_TAG: ${{ steps.npm_bump.outputs.new_tag }}
+          BUMP: ${{ steps.bump.outputs.type }}
+          CURRENT: ${{ steps.version.outputs.latest }}
         run: |
-          # ดึงข้อมูลล่าสุดและสลับไป branch develop
+          VERSION=${CURRENT#v}
+
+          NEXT=$(npx semver $VERSION -i $BUMP)
+
+          TAG="v$NEXT"
+
+          echo "next=$TAG"
+          echo "next=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Update package.json
+        env:
+          TAG: ${{ steps.next.outputs.next }}
+        run: |
+          VERSION=${TAG#v}
+
+          npm version $VERSION --no-git-tag-version
+
+      - name: Commit version bump
+        env:
+          TAG: ${{ steps.next.outputs.next }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add package.json package-lock.json || true
+          git commit -m "chore: bump version to $TAG [skip ci]"
+
+          git tag $TAG
+
+          git push origin main
+          git push origin $TAG
+
+      - name: Sync develop
+        run: |
           git fetch origin develop
           git checkout develop
-
-          # Merge main เข้าสู่ develop (ใช้ --no-ff เพื่อรักษาประวัติ หรือปกติก็พอ)
-          # ใช้ -m เพื่อใส่ message และป้องกันการเปิด editor ค้างไว้
-          git merge main -m "chore: sync version $NEW_TAG back to develop [skip ci]"
-
-          # Push กลับไปที่ develop
+          git merge origin/main -m "chore: sync main $TAG into develop [skip ci]"
           git push origin develop
