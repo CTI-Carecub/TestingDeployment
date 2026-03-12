@@ -73,7 +73,8 @@ jobs:
           fi
 
           # Push ทั้ง commit และ tag กลับไปที่ main
-          git push origin main --follow-tags
+          git push origin main
+          git push origin "$NEW_VERSION"
         id: npm_bump
 
       - name: Back-merge main into develop
