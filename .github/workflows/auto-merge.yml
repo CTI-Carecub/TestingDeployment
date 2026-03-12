@@ -6,15 +6,14 @@ on:
     branches:
       - develop
 
-# ป้องกัน Race Condition: หากมี Workflow ไหนใช้ group นี้อยู่ มันจะรอคิวให้เสร็จก่อน
 concurrency:
   group: develop-branch-sync
   cancel-in-progress: false
 
 jobs:
   auto-merge:
-    # ทำงานเฉพาะเมื่อ Label ที่เพิ่งติดคือ 'ready to merge' และ PR ยังเปิดอยู่
-    if: github.event.label.name == 'ready to merge' && github.event.pull_request.state == 'open'
+    # ✅ Fixed: wrapped conditions in ${{ }} expression syntax
+    if: ${{ github.event.label.name == 'ready to merge' && github.event.pull_request.state == 'open' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,27 +29,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          
+
           echo "### 🚀 Auto Merge Status" >> $GITHUB_STEP_SUMMARY
-          
-          # พยายามรันคำสั่ง merge และเก็บ error ไว้ในไฟล์ temp
+
           if gh pr merge $PR_NUMBER --merge 2>error.log; then
             echo "✅ PR #$PR_NUMBER merged successfully." >> $GITHUB_STEP_SUMMARY
           else
             ERROR_MSG=$(cat error.log)
             echo "❌ **Merge Failed!**" >> $GITHUB_STEP_SUMMARY
             echo "> **Reason:** $ERROR_MSG" >> $GITHUB_STEP_SUMMARY
-            
-            # ตรวจสอบรายละเอียดเพิ่มเติมจาก GitHub API
+
             echo "#### 🔍 Detailed Checks:" >> $GITHUB_STEP_SUMMARY
-            gh pr view $PR_NUMBER --json reviewDecision,statusCheckRollup >> pr_status.json
-            
-            # ดึงเหตุผลที่อ่านง่ายออกมาโชว์
-            DECISION=$(jq -r .reviewDecision pr_status.json)
+
+            # ✅ Fixed: use > instead of >> to avoid corrupt JSON if file already exists
+            gh pr view $PR_NUMBER --json reviewDecision,statusCheckRollup > pr_status.json
+
+            DECISION=$(jq -r '.reviewDecision' pr_status.json)
             echo "* **Review Status:** $DECISION (Needs 'APPROVED')" >> $GITHUB_STEP_SUMMARY
-            
-            # ลบ Label ออก
+
             gh pr edit $PR_NUMBER --remove-label "ready to merge"
-            
+
             exit 1
           fi
