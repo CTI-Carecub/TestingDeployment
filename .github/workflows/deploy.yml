@@ -50,8 +50,8 @@ jobs:
           elif [[ "$HAS_PATCH" == "true" ]]; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
-            echo "No version label found. Skipping."
-            exit 0
+            echo "No version label found. Defaulting to patch."
+            echo "type=patch" >> $GITHUB_OUTPUT
           fi
 
       - name: Bump Version in package.json
@@ -65,6 +65,12 @@ jobs:
           # ใช้ npm version เพื่ออัปเดตไฟล์และสร้าง commit/tag อัตโนมัติ
           NEW_VERSION=$(npm version "$BUMP_TYPE" -m "chore: bump version to %s [skip ci]")
           echo "new_tag=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          if git rev-parse "$NEW_VERSION" >/dev/null 2>&1; then
+            echo "Tag exists. Removing old tag..."
+            git tag -d "$NEW_VERSION" || true
+            git push origin ":refs/tags/$NEW_VERSION" || true
+          fi
 
           # Push ทั้ง commit และ tag กลับไปที่ main
           git push origin main --follow-tags
