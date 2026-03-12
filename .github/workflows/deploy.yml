@@ -30,12 +30,16 @@ jobs:
 
       - name: Determine Bump Type
         id: bump_type
+        env:
+          HAS_MAJOR: ${{ contains(github.event.pull_request.labels.*.name, 'MAJOR') }}
+          HAS_MINOR: ${{ contains(github.event.pull_request.labels.*.name, 'MINOR') }}
+          HAS_PATCH: ${{ contains(github.event.pull_request.labels.*.name, 'PATCH') }}
         run: |
-          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'MAJOR') }}" == "true" ]]; then
+          if [[ "$HAS_MAJOR" == "true" ]]; then
             echo "type=major" >> $GITHUB_OUTPUT
-          elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'MINOR') }}" == "true" ]]; then
+          elif [[ "$HAS_MINOR" == "true" ]]; then
             echo "type=minor" >> $GITHUB_OUTPUT
-          elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'PATCH') }}" == "true" ]]; then
+          elif [[ "$HAS_PATCH" == "true" ]]; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
             echo "No version label found. Skipping."
@@ -44,25 +48,32 @@ jobs:
 
       - name: Bump Version in package.json
         if: steps.bump_type.outputs.type != ''
+        env:
+          BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           # ใช้ npm version เพื่ออัปเดตไฟล์และสร้าง commit/tag อัตโนมัติ
-          NEW_VERSION=$(npm version ${{ steps.bump_type.outputs.type }} -m "chore: bump version to %s [skip ci]")
-          
+          NEW_VERSION=$(npm version "$BUMP_TYPE" -m "chore: bump version to %s [skip ci]")
+          echo "new_tag=$NEW_VERSION" >> $GITHUB_OUTPUT
+
           # Push ทั้ง commit และ tag กลับไปที่ main
           git push origin main --follow-tags
+        id: npm_bump
 
       - name: Back-merge main into develop
+        if: steps.bump_type.outputs.type != ''
+        env:
+          NEW_TAG: ${{ steps.npm_bump.outputs.new_tag }}
         run: |
           # ดึงข้อมูลล่าสุดและสลับไป branch develop
           git fetch origin develop
           git checkout develop
-          
+
           # Merge main เข้าสู่ develop (ใช้ --no-ff เพื่อรักษาประวัติ หรือปกติก็พอ)
           # ใช้ -m เพื่อใส่ message และป้องกันการเปิด editor ค้างไว้
-          git merge main -m "chore: sync version ${{ steps.npm_bump.outputs.new_tag }} back to develop [skip ci]"
-          
+          git merge main -m "chore: sync version $NEW_TAG back to develop [skip ci]"
+
           # Push กลับไปที่ develop
           git push origin develop

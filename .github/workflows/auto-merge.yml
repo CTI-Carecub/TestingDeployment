@@ -6,14 +6,12 @@ on:
     branches:
       - develop
 
-# ป้องกัน Race Condition: หากมี Workflow ไหนใช้ group นี้อยู่ มันจะรอคิวให้เสร็จก่อน
 concurrency:
   group: develop-branch-sync
   cancel-in-progress: false
 
 jobs:
   auto-merge:
-    # ทำงานเฉพาะเมื่อ Label ที่เพิ่งติดคือ 'ready to merge' และ PR ยังเปิดอยู่
     if: github.event.label.name == 'ready to merge' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     permissions:
@@ -28,29 +26,36 @@ jobs:
         id: merge_step
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          
           echo "### 🚀 Auto Merge Status" >> $GITHUB_STEP_SUMMARY
-          
-          # พยายามรันคำสั่ง merge และเก็บ error ไว้ในไฟล์ temp
-          if gh pr merge $PR_NUMBER --merge 2>error.log; then
+
+          # 1. Attempt merge
+          # `if` guards against set -e killing the script when merge fails
+          if MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --merge 2>&1); then
             echo "✅ PR #$PR_NUMBER merged successfully." >> $GITHUB_STEP_SUMMARY
           else
-            ERROR_MSG=$(cat error.log)
             echo "❌ **Merge Failed!**" >> $GITHUB_STEP_SUMMARY
-            echo "> **Reason:** $ERROR_MSG" >> $GITHUB_STEP_SUMMARY
-            
-            # ตรวจสอบรายละเอียดเพิ่มเติมจาก GitHub API
+            echo "> **Reason:** $MERGE_OUTPUT" >> $GITHUB_STEP_SUMMARY
+
             echo "#### 🔍 Detailed Checks:" >> $GITHUB_STEP_SUMMARY
-            gh pr view $PR_NUMBER --json reviewDecision,statusCheckRollup >> pr_status.json
             
-            # ดึงเหตุผลที่อ่านง่ายออกมาโชว์
-            DECISION=$(jq -r .reviewDecision pr_status.json)
-            echo "* **Review Status:** $DECISION (Needs 'APPROVED')" >> $GITHUB_STEP_SUMMARY
+            # Use || true to ensure the script doesn't crash if diagnostic data is missing
+            gh pr view "$PR_NUMBER" --json reviewDecision,statusCheckRollup > pr_status.json || echo "{}" > pr_status.json
             
-            # ลบ Label ออก
-            gh pr edit $PR_NUMBER --remove-label "ready to merge"
-            
+            DECISION=$(jq -r 'if .reviewDecision == "" then "N/A" else .reviewDecision end' pr_status.json)
+
+            # statusCheckRollup is a direct array; fields are .name, .conclusion, .status
+            CHECKS=$(jq -r '.statusCheckRollup[]? | "  * \(.name) (\(.workflowName)): \(if .conclusion == "" then .status else .conclusion end)"' pr_status.json 2>/dev/null || echo "No checks found")
+
+            echo "* **Review Status:** $DECISION" >> $GITHUB_STEP_SUMMARY
+            echo "* **CI Checks:**" >> $GITHUB_STEP_SUMMARY
+            echo "$CHECKS" >> $GITHUB_STEP_SUMMARY
+
+            # 2. MANDATORY: Remove label so the user knows they must re-trigger
+            echo "Removing 'ready to merge' label..."
+            gh pr edit "$PR_NUMBER" --remove-label "ready to merge" || echo "Warning: Could not remove label."
+
+            # 3. Exit with error so the Action UI shows a red X
             exit 1
           fi
