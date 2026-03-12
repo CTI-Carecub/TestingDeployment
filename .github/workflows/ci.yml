@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: Lint & Format Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: github.actor != 'dependabot[bot]'
+      - run: pnpm install
+        if: github.actor == 'dependabot[bot]'
+      - run: pnpm run ci
+
+  unit-test:
+    name: Unit Test & Coverage
+    runs-on: ubuntu-latest
+    # Runs in parallel with check — no dependency between lint and tests
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: github.actor != 'dependabot[bot]'
+      - run: pnpm install
+        if: github.actor == 'dependabot[bot]'
+      - run: pnpm run test:coverage
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [check, unit-test]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: github.actor != 'dependabot[bot]'
+      - run: pnpm install
+        if: github.actor == 'dependabot[bot]'
+      - run: pnpm run build
