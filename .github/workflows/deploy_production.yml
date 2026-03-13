@@ -10,8 +10,11 @@ on:
       promote:
         description: "Promote to production after deploy?"
         required: true
-        type: boolean
-        default: false
+        type: choice
+        default: "false"
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: deploy-production
@@ -23,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
 
     environment:
-      name: production
+      name: ${{ inputs.promote == 'true' && 'production' || 'preview' }}
       url: ${{ steps.deploy.outputs.url }}
 
     steps:
@@ -87,7 +90,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Promote to production
-        if: ${{ inputs.promote == true }}
+        if: ${{ inputs.promote == 'true' }}
         run: |
           vercel promote ${{ steps.deploy.outputs.url }} --token=${{ secrets.VERCEL_TOKEN }}
           echo "Promoted ${{ inputs.tag }} → production"
