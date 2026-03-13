@@ -10,11 +10,8 @@ on:
       promote:
         description: "Promote to production after deploy?"
         required: true
-        type: choice
-        default: "false"
-        options:
-          - "false"
-          - "true"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-production
