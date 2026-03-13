@@ -92,7 +92,7 @@ jobs:
       - name: Promote to production
         if: ${{ inputs.promote == 'true' }}
         run: |
-          vercel promote ${{ steps.deploy.outputs.url }} --scope=${{ secrets.VERCEL_ORG_ID }} --token=${{ secrets.VERCEL_TOKEN }}
+          vercel promote ${{ steps.deploy.outputs.url }} --scope=${{ secrets.VERCEL_ORG_ID }} --yes --token=${{ secrets.VERCEL_TOKEN }}
           echo "Promoted ${{ inputs.tag }} → production"
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
