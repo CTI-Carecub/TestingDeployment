@@ -103,6 +103,8 @@ jobs:
           git push origin $TAG
 
       - name: Sync develop
+        env:
+          TAG: ${{ steps.next.outputs.next }}
         run: |
           git fetch origin develop
           git checkout develop
