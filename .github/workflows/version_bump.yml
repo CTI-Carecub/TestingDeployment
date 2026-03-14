@@ -17,14 +17,15 @@ jobs:
 
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Create GitHub App Token
         uses: actions/create-github-app-token@v2
         id: app-token
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_SECRET }}
+          app-id: ${{ vars.BUMPER_APP_ID }}
+          private-key: ${{ secrets.BUMPER_SECRET_KEY }}
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -55,13 +56,12 @@ jobs:
         run: |
           git fetch --tags
 
-          LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
 
           if [ -z "$LATEST_TAG" ]; then
             LATEST_TAG="v0.0.0"
           fi
 
-          echo "latest=$LATEST_TAG"
           echo "latest=$LATEST_TAG" >> $GITHUB_OUTPUT
 
       - name: Calculate next version
@@ -94,10 +94,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add package.json || true
-          git commit -m "chore: bump version to $TAG [skip ci]"
+          git add package.json
+          git commit -m "chore: bump version to $TAG [skip ci]" || echo "No changes"
 
-          git tag $TAG
+          git tag $TAG || echo "tag exists"
 
           git push origin main
           git push origin $TAG
@@ -105,8 +105,24 @@ jobs:
       - name: Sync develop
         env:
           TAG: ${{ steps.next.outputs.next }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           git fetch origin develop
           git checkout develop
-          git merge origin/main -m "chore: sync main $TAG into develop [skip ci]"
+
+         
+          git merge --abort
+
+          printf '⚠️ **Develop Sync Failed — Manual Intervention Required**\n\nVersion %s was tagged and `main` was updated successfully, but the automatic sync to `develop` failed due to a merge conflict.\n\n**To resolve:**\n```bash\ngit checkout develop\ngit merge origin/main\n# resolve conflicts\ngit push origin develop\n```\n' "$TAG" > comment.md
+          gh pr comment "$PR_NUMBER" --body-file comment.md
+
+          echo "❌ Develop sync failed — merge conflict detected." >> $GITHUB_STEP_SUMMARY
+          echo "A comment has been posted on PR #$PR_NUMBER." >> $GITHUB_STEP_SUMMARY
+
+          exit 1
+          
+
           git push origin develop
+          echo "✅ develop synced to $TAG" >> $GITHUB_STEP_SUMMARY
+          
